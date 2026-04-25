@@ -159,17 +159,22 @@ public class Node implements NodeInterface {
         if (isStoredLocally(key)) {
             return true;
         }
+        boolean sawNegative = false;
         for (AddressEntry target : findClosestNodesToKey(key, true)) {
             Message response = sendRequest(target, buildKeyRequest('E', key));
             if (response == null || response.type != 'F' || response.payload.length < 1) {
                 continue;
             }
-            char code = (char) response.payload[0];
+            ParseCursor cursor = new ParseCursor(response.payload, 0);
+            Character code = parseCode(cursor);
+            if (code == null) {
+                continue;
+            }
             if (code == 'Y') {
                 return true;
             }
             if (code == 'N') {
-                return false;
+                sawNegative = true;
             }
         }
         return false;
@@ -184,18 +189,22 @@ public class Node implements NodeInterface {
         if (localValue != null) {
             return localValue;
         }
+        boolean sawNegative = false;
         for (AddressEntry target : findClosestNodesToKey(key, true)) {
             Message response = sendRequest(target, buildKeyRequest('R', key));
             if (response == null || response.type != 'S' || response.payload.length < 1) {
                 continue;
             }
-            char code = (char) response.payload[0];
+            ParseCursor cursor = new ParseCursor(response.payload, 0);
+            Character code = parseCode(cursor);
+            if (code == null) {
+                continue;
+            }
             if (code == 'Y') {
-                ParseCursor cursor = new ParseCursor(response.payload, 2);
                 return parseString(cursor);
             }
             if (code == 'N') {
-                return null;
+                sawNegative = true;
             }
         }
         return null;
@@ -215,7 +224,11 @@ public class Node implements NodeInterface {
             if (response == null || response.type != 'X' || response.payload.length < 1) {
                 continue;
             }
-            char code = (char) response.payload[0];
+            ParseCursor cursor = new ParseCursor(response.payload, 0);
+            Character code = parseCode(cursor);
+            if (code == null) {
+                continue;
+            }
             if (code == 'A' || code == 'R') {
                 success = true;
             }
@@ -234,7 +247,11 @@ public class Node implements NodeInterface {
             if (response == null || response.type != 'D' || response.payload.length < 1) {
                 continue;
             }
-            char code = (char) response.payload[0];
+            ParseCursor cursor = new ParseCursor(response.payload, 0);
+            Character code = parseCode(cursor);
+            if (code == null) {
+                continue;
+            }
             if (code == 'A' || code == 'R') {
                 success = true;
             }
@@ -362,17 +379,17 @@ public class Node implements NodeInterface {
     }
 
     private byte[] handleNearestRequest(Message message) throws Exception {
-        if (message.payload.length < 65 || message.payload[0] != (byte) ' ') {
+        if (message.payload.length != 65 || message.payload[0] != (byte) ' ') {
             return null;
         }
-        String hexHash = new String(message.payload, 1, message.payload.length - 1,
-            StandardCharsets.UTF_8).trim();
+        String hexHash = new String(message.payload, 1, 64, StandardCharsets.UTF_8);
         byte[] targetHash = parseHexHash(hexHash);
         if (targetHash == null) {
             return null;
         }
         List<AddressEntry> nearest = getClosestKnownNodes(targetHash, 3);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write((byte) ' ');
         for (AddressEntry entry : nearest) {
             out.write(encodeString(entry.nodeName));
             out.write(encodeString(entry.addressValue));
@@ -384,28 +401,29 @@ public class Node implements NodeInterface {
         ParseCursor cursor = new ParseCursor(message.payload, 1);
         String key = parseString(cursor);
         if (!isValidKey(key)) {
-            return buildMessage(message.transactionId, 'F', new byte[] { (byte) '?' });
+            return buildCodeOnlyResponse(message.transactionId, 'F', '?');
         }
         char code = computeLookupResponseCode(key);
-        return buildMessage(message.transactionId, 'F', new byte[] { (byte) code });
+        return buildCodeOnlyResponse(message.transactionId, 'F', code);
     }
 
     private byte[] handleReadRequest(Message message) throws Exception {
         ParseCursor cursor = new ParseCursor(message.payload, 1);
         String key = parseString(cursor);
         if (!isValidKey(key)) {
-            return buildMessage(message.transactionId, 'S', new byte[] { (byte) '?' });
+            return buildCodeOnlyResponse(message.transactionId, 'S', '?');
         }
         String value = getLocalValue(key);
         if (value != null) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
+            out.write((byte) ' ');
             out.write((byte) 'Y');
             out.write((byte) ' ');
             out.write(encodeString(value));
             return buildMessage(message.transactionId, 'S', out.toByteArray());
         }
         char code = isAmongClosestThree(key) ? 'N' : '?';
-        return buildMessage(message.transactionId, 'S', new byte[] { (byte) code });
+        return buildCodeOnlyResponse(message.transactionId, 'S', code);
     }
 
     private byte[] handleWriteRequest(Message message) throws Exception {
@@ -413,22 +431,22 @@ public class Node implements NodeInterface {
         String key = parseString(cursor);
         String value = parseString(cursor);
         if (!isValidKey(key) || value == null) {
-            return buildMessage(message.transactionId, 'X', new byte[] { (byte) 'X' });
+            return buildCodeOnlyResponse(message.transactionId, 'X', 'X');
         }
         if (isAddressKey(key)) {
             boolean replaced = hasLocalValue(key);
             boolean stored = storeAddressEntry(key, value, false);
             char code = stored ? (replaced ? 'R' : 'A') : 'X';
-            return buildMessage(message.transactionId, 'X', new byte[] { (byte) code });
+            return buildCodeOnlyResponse(message.transactionId, 'X', code);
         }
         synchronized (stateLock) {
             boolean alreadyPresent = dataStore.containsKey(key);
             if (!alreadyPresent && !isAmongClosestThree(key)) {
-                return buildMessage(message.transactionId, 'X', new byte[] { (byte) 'X' });
+                return buildCodeOnlyResponse(message.transactionId, 'X', 'X');
             }
             dataStore.put(key, value);
-            return buildMessage(message.transactionId, 'X',
-                new byte[] { (byte) (alreadyPresent ? 'R' : 'A') });
+            return buildCodeOnlyResponse(message.transactionId, 'X',
+                alreadyPresent ? 'R' : 'A');
         }
     }
 
@@ -438,22 +456,22 @@ public class Node implements NodeInterface {
         String requestedValue = parseString(cursor);
         String newValue = parseString(cursor);
         if (!isDataKey(key) || requestedValue == null || newValue == null) {
-            return buildMessage(message.transactionId, 'D', new byte[] { (byte) 'X' });
+            return buildCodeOnlyResponse(message.transactionId, 'D', 'X');
         }
         synchronized (stateLock) {
             String currentValue = dataStore.get(key);
             if (currentValue == null) {
                 if (!isAmongClosestThree(key)) {
-                    return buildMessage(message.transactionId, 'D', new byte[] { (byte) 'X' });
+                    return buildCodeOnlyResponse(message.transactionId, 'D', 'X');
                 }
                 dataStore.put(key, newValue);
-                return buildMessage(message.transactionId, 'D', new byte[] { (byte) 'A' });
+                return buildCodeOnlyResponse(message.transactionId, 'D', 'A');
             }
             if (!currentValue.equals(requestedValue)) {
-                return buildMessage(message.transactionId, 'D', new byte[] { (byte) 'N' });
+                return buildCodeOnlyResponse(message.transactionId, 'D', 'N');
             }
             dataStore.put(key, newValue);
-            return buildMessage(message.transactionId, 'D', new byte[] { (byte) 'R' });
+            return buildCodeOnlyResponse(message.transactionId, 'D', 'R');
         }
     }
 
@@ -767,7 +785,7 @@ public class Node implements NodeInterface {
     }
 
     private byte[] buildSimpleRequest(char type) throws Exception {
-        return buildMessage(generateTransactionId(), type, new byte[] { (byte) ' ' });
+        return buildMessage(generateTransactionId(), type, null);
     }
 
     private byte[] buildKeyRequest(char type, String key) throws Exception {
@@ -802,6 +820,10 @@ public class Node implements NodeInterface {
         return out.toByteArray();
     }
 
+    private byte[] buildCodeOnlyResponse(String txId, char type, char code) throws Exception {
+        return buildMessage(txId, type, new byte[] { (byte) ' ', (byte) code });
+    }
+
     private byte[] buildMessage(String txId, char type, byte[] payload) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(txId.getBytes(StandardCharsets.ISO_8859_1));
@@ -809,9 +831,6 @@ public class Node implements NodeInterface {
         out.write((byte) type);
         if (payload != null) {
             out.write(payload);
-        }
-        if (payload == null || payload.length == 0 || payload[payload.length - 1] != (byte) ' ') {
-            out.write((byte) ' ');
         }
         return out.toByteArray();
     }
@@ -895,6 +914,21 @@ public class Node implements NodeInterface {
             return null;
         }
         return null;
+    }
+
+    private Character parseCode(ParseCursor cursor) {
+        while (cursor.index < cursor.bytes.length && cursor.bytes[cursor.index] == (byte) ' ') {
+            cursor.index += 1;
+        }
+        if (cursor.index >= cursor.bytes.length) {
+            return null;
+        }
+        char code = (char) cursor.bytes[cursor.index];
+        cursor.index += 1;
+        while (cursor.index < cursor.bytes.length && cursor.bytes[cursor.index] == (byte) ' ') {
+            cursor.index += 1;
+        }
+        return code;
     }
 
     private boolean isRequestType(char type) {
