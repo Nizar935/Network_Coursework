@@ -2,9 +2,9 @@
 // Coursework 2024/2025
 //
 // Submission by
-//  YOUR_NAME_GOES_HERE
-//  YOUR_STUDENT_ID_NUMBER_GOES_HERE
-//  YOUR_EMAIL_GOES_HERE
+//  Nizar Omar
+//  240025466
+//  Nizar.Omar@city.ac.uk
 
 
 // DO NOT EDIT starts

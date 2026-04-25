@@ -2,9 +2,12 @@
 // Coursework 2024/2025
 //
 // Submission by
-//  YOUR_NAME_GOES_HERE
-//  YOUR_STUDENT_ID_NUMBER_GOES_HERE
-//  YOUR_EMAIL_GOES_HERE
+//  Nizar Omar
+//  240025466
+//  Nizar.Omar@city.ac.uk
+
+
+
 
 import java.io.ByteArrayOutputStream;
 import java.net.DatagramPacket;
@@ -28,19 +31,6 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
-
-interface NodeInterface {
-    public void setNodeName(String nodeName) throws Exception;
-    public void openPort(int portNumber) throws Exception;
-    public void handleIncomingMessages(int delay) throws Exception;
-    public boolean isActive(String nodeName) throws Exception;
-    public void pushRelay(String nodeName) throws Exception;
-    public void popRelay() throws Exception;
-    public boolean exists(String key) throws Exception;
-    public String read(String key) throws Exception;
-    public boolean write(String key, String value) throws Exception;
-    public boolean CAS(String key, String currentValue, String newValue) throws Exception;
-}
 
 public class Node implements NodeInterface {
     private static final int MAX_PACKET_SIZE = 65507;

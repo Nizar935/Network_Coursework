@@ -73,8 +73,10 @@ class AzureLabTest {
         if (!emailAddress.contains("@")) {
             throw new IllegalArgumentException("First argument must be your email address.");
         }
-        if (!looksLikeAzureIp(ipAddress)) {
-            throw new IllegalArgumentException("Second argument must look like 10.x.x.x.");
+        if (!looksLikeAllowedIp(ipAddress)) {
+            throw new IllegalArgumentException(
+                "Second argument must be 127.0.0.1, localhost, or look like 10.x.x.x."
+            );
         }
         if (args.length == 3) {
             port = Integer.parseInt(args[2].trim());
@@ -85,7 +87,10 @@ class AzureLabTest {
         return new Config(emailAddress, ipAddress, port);
     }
 
-    private static boolean looksLikeAzureIp(String ipAddress) {
+    private static boolean looksLikeAllowedIp(String ipAddress) {
+        if ("127.0.0.1".equals(ipAddress) || "localhost".equalsIgnoreCase(ipAddress)) {
+            return true;
+        }
         if (!ipAddress.startsWith("10.")) {
             return false;
         }
@@ -119,6 +124,7 @@ class AzureLabTest {
     private static void printUsage() {
         System.out.println("Usage:");
         System.out.println("java AzureLabTest your.email@city.ac.uk 10.x.x.x [port]");
+        System.out.println("java AzureLabTest your.email@city.ac.uk 127.0.0.1 [port]");
     }
 
     private static class Config {
