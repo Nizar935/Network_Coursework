@@ -612,7 +612,7 @@ public class Node implements NodeInterface {
     }
 
     private boolean ingestNearestResponse(Message response) {
-        ParseCursor cursor = new ParseCursor(response.payload, 1);
+        ParseCursor cursor = new ParseCursor(response.payload, 0);
         boolean changed = false;
         while (cursor.index < response.payload.length) {
             String foundName = parseString(cursor);
