@@ -793,8 +793,13 @@ public class Node implements NodeInterface {
 
     private byte[] buildNearestRequest(byte[] targetHash) throws Exception {
         String hexHash = toHex(targetHash);
-        byte[] payload = (" " + hexHash).getBytes(StandardCharsets.UTF_8);
-        return buildMessage(generateTransactionId(), 'N', payload);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(generateTransactionId().getBytes(StandardCharsets.ISO_8859_1));
+        out.write((byte) ' ');
+        out.write((byte) 'N');
+        out.write((byte) ' ');
+        out.write(hexHash.getBytes(StandardCharsets.UTF_8));
+        return out.toByteArray();
     }
 
     private byte[] buildMessage(String txId, char type, byte[] payload) throws Exception {
