@@ -1,7 +1,7 @@
 Build Instructions
 ==================
 
-Open a terminal in the directory that contains the Java source files.
+Open a terminal in the directory that contains the submitted Java source files.
 
 Compile with:
 javac *.java
@@ -10,7 +10,10 @@ Run the local multi-node test with:
 java LocalTest
 
 Run the Azure smoke test with:
-java AzureLabTest nizar.omar@city.ac.uk  127.0.0.1 [port]
+java AzureLabTest your.email@city.ac.uk 10.x.x.x [port]
+
+Example:
+java AzureLabTest Nizar.Omar@city.ac.uk 10.216.35.149 20110
 
 
 Run Instructions
@@ -30,7 +33,7 @@ handleIncomingMessages(delayInMilliseconds)
 Working Functionality
 =====================
 
-The following functionality is implemented in Node.java:
+The following functionality is implemented:
 
 - SHA-256 based hashID handling and distance comparison
 - CRN string encoding and parsing
@@ -43,14 +46,17 @@ The following functionality is implemented in Node.java:
 - Passive node discovery from protocol traffic
 - Active nearest-based node discovery
 - Local request handling while the node is running in the background
+- Azure smoke test successfully read all 7 poem entries from the lab network
+- Local tests for CAS, malformed packets, duplicate packets and basic txid matching were used during debugging
 
 
 Known Limitations
 =================
 
-- This implementation has been smoke-tested locally, but it still needs final
-  validation against the Azure lab nodes and the provided shared network.
-- The Wireshark capture required for submission has not been generated in this
-  repository.
+- Relay, storage-rule, and robustness behaviour were tested manually and with
+  helper test files, but hidden marking tests may still expose edge cases.
 - The address-book stability policy is conservative when more than three nodes
   are known at the same distance.
+- The submission ZIP should include only the solution Java files, README.txt,
+  and the Wireshark capture file. Debug-only test files used during
+  development should not be included.

@@ -61,6 +61,7 @@ public class Node implements NodeInterface {
     private final Map<String, RelayContext> relayContexts =
         new ConcurrentHashMap<String, RelayContext>();
     private final Deque<String> relayStack = new ArrayDeque<String>();
+    private boolean rebalanceInProgress;
 
     public void setNodeName(String nodeName) throws Exception {
         if (nodeName == null || !nodeName.startsWith("N:")) {
@@ -738,6 +739,7 @@ public class Node implements NodeInterface {
         if (parsed == null || !isAddressKey(key)) {
             return false;
         }
+        boolean changed = false;
         try {
             byte[] keyHash = HashID.computeHashID(key);
             synchronized (stateLock) {
@@ -748,27 +750,31 @@ public class Node implements NodeInterface {
                     }
                     addressBook.put(key, new AddressEntry(key, value, parsed.address, parsed.port,
                         keyHash, true));
-                    return true;
-                }
-
-                int targetDistance = distance(nodeHash, keyHash);
-                List<AddressEntry> sameDistance = new ArrayList<AddressEntry>();
-                for (AddressEntry entry : addressBook.values()) {
-                    if (distance(entry.hash, nodeHash) == targetDistance) {
-                        sameDistance.add(entry);
+                    changed = true;
+                } else {
+                    int targetDistance = distance(nodeHash, keyHash);
+                    List<AddressEntry> sameDistance = new ArrayList<AddressEntry>();
+                    for (AddressEntry entry : addressBook.values()) {
+                        if (distance(entry.hash, nodeHash) == targetDistance) {
+                            sameDistance.add(entry);
+                        }
                     }
+                    if (sameDistance.size() >= 3 && !key.equals(nodeName)) {
+                        Collections.sort(sameDistance, new StabilityComparator());
+                        return false;
+                    }
+                    addressBook.put(key, new AddressEntry(key, value, parsed.address, parsed.port,
+                        keyHash, true));
+                    changed = true;
                 }
-                if (sameDistance.size() >= 3 && !key.equals(nodeName)) {
-                    Collections.sort(sameDistance, new StabilityComparator());
-                    return false;
-                }
-                addressBook.put(key, new AddressEntry(key, value, parsed.address, parsed.port,
-                    keyHash, true));
-                return true;
             }
         } catch (Exception e) {
             return false;
         }
+        if (changed) {
+            triggerRebalanceIfNeeded();
+        }
+        return true;
     }
 
     private void markAddressInactive(String failedNodeName) {
@@ -776,12 +782,96 @@ public class Node implements NodeInterface {
             return;
         }
         synchronized (stateLock) {
-            AddressEntry existing = addressBook.get(failedNodeName);
-            if (existing != null && !failedNodeName.equals(nodeName)) {
-                existing.active = false;
-                existing.stabilityScore -= 1;
+            if (!failedNodeName.equals(nodeName)) {
+                addressBook.remove(failedNodeName);
             }
         }
+    }
+
+    private void triggerRebalanceIfNeeded() {
+        synchronized (stateLock) {
+            if (rebalanceInProgress) {
+                return;
+            }
+            rebalanceInProgress = true;
+        }
+        Thread rebalanceThread = new Thread(new Runnable() {
+            public void run() {
+                try {
+                    rebalanceStoredData();
+                } finally {
+                    synchronized (stateLock) {
+                        rebalanceInProgress = false;
+                    }
+                }
+            }
+        });
+        rebalanceThread.setDaemon(true);
+        rebalanceThread.start();
+    }
+
+    private void rebalanceStoredData() {
+        List<Map.Entry<String, String>> snapshot = new ArrayList<Map.Entry<String, String>>();
+        synchronized (stateLock) {
+            snapshot.addAll(dataStore.entrySet());
+        }
+        for (Map.Entry<String, String> entry : snapshot) {
+            try {
+                attemptRebalance(entry.getKey(), entry.getValue());
+            } catch (Exception e) {
+                // Ignore rebalancing failures and keep serving traffic.
+            }
+        }
+    }
+
+    private void attemptRebalance(String key, String value) throws Exception {
+        List<AddressEntry> closerNodes = getStrictlyCloserActiveNodes(key, 3);
+        if (closerNodes.size() < 3) {
+            return;
+        }
+        boolean transferred = false;
+        for (AddressEntry target : closerNodes) {
+            Message response = sendRequest(target, buildWriteRequest('W', key, value));
+            if (response == null || response.type != 'X') {
+                continue;
+            }
+            ParseCursor cursor = new ParseCursor(response.payload, 0);
+            Character code = parseCode(cursor);
+            if (code != null && (code == 'A' || code == 'R')) {
+                transferred = true;
+            }
+        }
+        if (!transferred) {
+            return;
+        }
+        synchronized (stateLock) {
+            String currentValue = dataStore.get(key);
+            if (currentValue != null && currentValue.equals(value)
+                && getStrictlyCloserActiveNodes(key, 3).size() >= 3) {
+                dataStore.remove(key);
+            }
+        }
+    }
+
+    private List<AddressEntry> getStrictlyCloserActiveNodes(String key, int limit) throws Exception {
+        byte[] keyHash = HashID.computeHashID(key);
+        int selfDistance = distance(nodeHash, keyHash);
+        List<AddressEntry> candidates = new ArrayList<AddressEntry>();
+        synchronized (stateLock) {
+            for (AddressEntry entry : addressBook.values()) {
+                if (!entry.active || entry.nodeName.equals(nodeName)) {
+                    continue;
+                }
+                if (distance(entry.hash, keyHash) < selfDistance) {
+                    candidates.add(entry);
+                }
+            }
+        }
+        Collections.sort(candidates, new DistanceComparator(keyHash));
+        if (candidates.size() > limit) {
+            return new ArrayList<AddressEntry>(candidates.subList(0, limit));
+        }
+        return candidates;
     }
 
     private byte[] buildSimpleRequest(char type) throws Exception {
