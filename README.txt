@@ -10,7 +10,7 @@ Run the local multi-node test with:
 java LocalTest
 
 Run the Azure smoke test with:
-java AzureLabTest your.email@city.ac.uk 10.x.x.x [port]
+java AzureLabTest Nizar.Omar@city.ac.uk 10.216.35.149 20110
 
 Example:
 java AzureLabTest Nizar.Omar@city.ac.uk 10.216.35.149 20110
